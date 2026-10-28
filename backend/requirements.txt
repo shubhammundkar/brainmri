@@ -1,0 +1,13 @@
+# BrainVision 3D - Backend Requirements for BraTS 2020 Tumor Segmentation
+# Hardware Target: NVIDIA RTX 3050 (6 GB VRAM) / CUDA 12.x or CPU fallback
+
+numpy>=1.24.0
+scipy>=1.10.0
+nibabel>=5.0.0
+fastapi>=0.100.0
+uvicorn>=0.20.0
+python-multipart>=0.0.6
+pydantic>=2.0.0
+torch>=2.0.0
+requests>=2.28.0
+pytest>=7.0.0

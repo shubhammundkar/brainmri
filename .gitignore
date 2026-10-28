@@ -1,0 +1,49 @@
+# Python
+backend/venv/
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# IDE / System
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.tmp
+*.log
+
+# Antigravity / AI artifacts
+.gemini/
+
+# Node
+node_modules/
+dist/
+
+# BraTS Dataset and Medical Data (DO NOT COMMIT)
+data/
+datasets/
+*BraTS*
+*brats*
+MICCAI_BraTS*
+*.tar.gz
+*.zip
+*.h5
+*.hdf5
+# Model weights & checkpoints
+*.pt
+*.pth
+*.onnx
+checkpoints/
+weights/
+# Ignore any user-added NIfTI or DICOM except default sample template
+*.nii
+*.nii.gz
+!assets/mni152.nii.gz
+!frontend/assets/mni152.nii.gz
+!mni152.nii/mni152.nii
+
