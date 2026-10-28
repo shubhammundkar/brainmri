@@ -2,11 +2,11 @@
   "name": "brainvision-3d",
   "version": "1.0.0",
   "description": "BrainVision 3D - AI-Assisted Medical Imaging Workstation",
-  "main": "index.html",
+  "main": "frontend/index.html",
   "scripts": {
-    "start": "npx live-server --port=8080",
-    "dev": "npx live-server --port=8080",
-    "serve": "npx live-server --port=8080"
+    "start": "npx live-server frontend --port=8080",
+    "dev": "npx live-server frontend --port=8080",
+    "serve": "npx live-server frontend --port=8080"
   },
   "keywords": [
     "mri",

@@ -43,7 +43,5 @@ weights/
 # Ignore any user-added NIfTI or DICOM except default sample template
 *.nii
 *.nii.gz
-!assets/mni152.nii.gz
 !frontend/assets/mni152.nii.gz
-!mni152.nii/mni152.nii
 
