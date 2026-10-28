@@ -45,9 +45,20 @@ window.AppState = (function() {
     },
     currentModality: 't1',
 
-    // Real 3D AI Segmentation Mask: Uint8Array of size (nx * ny * nz)
+    patientId: null,
+    loadedModalities: [],
+    rawFiles: {
+      t1: null,
+      t1ce: null,
+      t2: null,
+      flair: null,
+      seg: null
+    },
+
+    // Real 3D AI or Ground-Truth Segmentation Mask: Uint8Array of size (nx * ny * nz)
     // BraTS 2020 Labels: 0: background, 1: NCR (Necrotic Core), 2: ED (Edema), 4: ET (Enhancing Tumor)
     segmentationMask: null,
+    segmentationSource: null, // 'ground_truth' or 'ai' or null
     segmentationMetrics: null,
     segmentationLabels: {
       1: 'Necrotic Core (NCR)',
@@ -120,9 +131,16 @@ window.AppState = (function() {
     notify();
   }
 
-  function setModalities(modalitiesMap, active = 't1') {
+  function setPatientFiles(patientId, rawFilesMap) {
+    state.patientId = patientId;
+    state.rawFiles = Object.assign({}, state.rawFiles, rawFilesMap);
+    notify();
+  }
+
+  function setModalities(modalitiesMap, active = 'flair') {
     state.modalities = Object.assign({}, state.modalities, modalitiesMap);
-    const chosen = state.modalities[active] ? active : Object.keys(modalitiesMap)[0];
+    state.loadedModalities = Object.keys(state.modalities).filter(k => !!state.modalities[k]);
+    const chosen = state.modalities[active] ? active : (state.loadedModalities[0] || 't1');
     if (chosen && state.modalities[chosen]) {
       state.currentModality = chosen;
       state.volume = state.modalities[chosen];
@@ -141,8 +159,9 @@ window.AppState = (function() {
     return false;
   }
 
-  function setSegmentationMask(mask, labels = null, metrics = null) {
+  function setSegmentationMask(mask, labels = null, metrics = null, source = 'ground_truth') {
     state.segmentationMask = mask;
+    state.segmentationSource = source;
     if (labels) state.segmentationLabels = labels;
     if (metrics) state.segmentationMetrics = metrics;
     state.viewport.tumorVisible = true;
@@ -152,6 +171,8 @@ window.AppState = (function() {
 
   function clearSegmentation() {
     state.segmentationMask = null;
+    state.segmentationSource = null;
+    state.segmentationMetrics = null;
     state.viewport.tumorVisible = false;
     notify();
   }
@@ -178,6 +199,7 @@ window.AppState = (function() {
     setState,
     setDatasetMetadata,
     setVolumeData,
+    setPatientFiles,
     setModalities,
     setModality,
     setSegmentationMask,

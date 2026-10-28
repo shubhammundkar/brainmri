@@ -6,7 +6,9 @@
   "scripts": {
     "start": "npx live-server frontend --port=8080",
     "dev": "npx live-server frontend --port=8080",
-    "serve": "npx live-server frontend --port=8080"
+    "serve": "npx live-server frontend --port=8080",
+    "test": "node frontend/tests/patient_loader.test.js",
+    "test:patient": "node frontend/tests/patient_loader.test.js"
   },
   "keywords": [
     "mri",

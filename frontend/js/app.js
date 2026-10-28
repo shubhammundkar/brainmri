@@ -50,12 +50,15 @@ document.addEventListener('DOMContentLoaded', () => {
   // Upload Elements
   const uploadPanel = document.getElementById('upload-panel');
   const fileInput = document.getElementById('file-input');
+  const folderInput = document.getElementById('folder-input');
   const btnBrowseFiles = document.getElementById('btn-browse-files');
+  const btnLoadPatient = document.getElementById('btn-load-patient');
   const btnLoadSample = document.getElementById('btn-load-sample');
   const btnLoadBratsSample = document.getElementById('btn-load-brats-sample');
 
   // BraTS Modality Selector Buttons
   const modButtons = document.querySelectorAll('.modality-pill-btn');
+  const badgePatientId = document.getElementById('badge-patient-id');
 
   // Display Controls Elements (2D)
   const toggleBrain = document.getElementById('toggle-brain');
@@ -93,6 +96,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Dataset Info Elements
   const badgeStatus = document.getElementById('badge-dataset-status');
   const infoStatus = document.getElementById('info-status');
+  const infoPatientId = document.getElementById('info-patient-id');
+  const infoModalities = document.getElementById('info-modalities');
+  const infoMaskStatus = document.getElementById('info-mask-status');
   const infoDimensions = document.getElementById('info-dimensions');
   const infoSpacing = document.getElementById('info-spacing');
   const infoSlices = document.getElementById('info-slices');
@@ -160,7 +166,9 @@ document.addEventListener('DOMContentLoaded', () => {
   window.UploadManager.initUpload({
     dropzone: uploadPanel,
     fileInput: fileInput,
+    folderInput: folderInput,
     browseBtn: btnBrowseFiles,
+    loadPatientBtn: btnLoadPatient,
     sampleBtn: btnLoadSample
   });
 
@@ -680,7 +688,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     const data = generateBraTSVolume240();
     const meta = {
-      fileName: 'BraTS20_Training_Sample (4-Modal)',
+      patientId: 'BraTS20_Demo',
+      fileName: 'BraTS20_Demo (4-Modal)',
       fileSize: '14.2 MB',
       fileType: 'BraTS 2020 Multi-Modal NIfTI',
       nx: data.nx,
@@ -694,6 +703,7 @@ document.addEventListener('DOMContentLoaded', () => {
       maxVoxel: 255
     };
 
+    window.AppState.state.patientId = 'BraTS20_Demo';
     window.AppState.setDatasetMetadata(meta);
     window.AppState.setModalities({
       t1: data.t1,
@@ -805,50 +815,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  function generateRealSegmentationMask(nx, ny, nz) {
-    const mask = new Uint8Array(nx * ny * nz);
-    const cx = Math.floor(nx / 2) + (nx === 240 ? 28 : 26);
-    const cy = Math.floor(ny / 2) - (ny === 240 ? 18 : 20);
-    const cz = Math.floor(nz / 2) + (nz === 155 ? 20 : 22);
-
-    const rx = nx === 240 ? 22 : 20;
-    const ry = ny === 240 ? 18 : 16;
-    const rz = nz === 155 ? 20 : 18;
-
-    for (let z = 0; z < nz; z++) {
-      const dz_ = (z - cz) / rz;
-      const zOff = z * nx * ny;
-      for (let y = 0; y < ny; y++) {
-        const dy_ = (y - cy) / ry;
-        const rowOff = zOff + y * nx;
-        for (let x = 0; x < nx; x++) {
-          const dx_ = (x - cx) / rx;
-          const distSq = dx_ * dx_ + dy_ * dy_ + dz_ * dz_;
-
-          if (distSq <= 1.0) {
-            // BraTS 2020 Ground Truth Labels:
-            // 1: Necrotic Core (NCR)
-            // 4: Enhancing Tumor (ET)
-            // 2: Peritumoral Edema (ED)
-            if (distSq < 0.28) {
-              mask[rowOff + x] = 1; // NCR
-            } else if (distSq < 0.68) {
-              mask[rowOff + x] = 4; // ET (BraTS label 4)
-            } else {
-              mask[rowOff + x] = 2; // ED
-            }
-          }
-        }
-      }
-    }
-    return mask;
-  }
-
   if (btnRunAI) {
     btnRunAI.addEventListener('click', async () => {
       if (isAiSegmenting) return;
-      isAiSegmenting = true;
 
+      const state = window.AppState.state;
+      const all4Loaded = ['flair', 't1ce', 't1', 't2'].every(m => state.loadedModalities.includes(m));
+      if (!all4Loaded) {
+        window.AppState.setState(window.AppState.STATES.ERROR, {
+          errorMessage: 'Cannot run AI Segmentation: BraTS 3D Residual U-Net requires all 4 modalities (T1, T1ce, T2, FLAIR). Please load a complete patient dataset.'
+        });
+        return;
+      }
+
+      isAiSegmenting = true;
+      btnRunAI.disabled = true;
       btnRunAI.innerHTML = `
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="spin">
           <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
@@ -857,83 +838,93 @@ document.addEventListener('DOMContentLoaded', () => {
         </svg>
         <span>Running 3D U-Net Inference...</span>
       `;
-      if (aiFootnote) aiFootnote.textContent = 'BraTS 3D Residual U-Net segmenting lesion...';
+      if (aiFootnote) aiFootnote.textContent = 'Contacting FastAPI backend (http://127.0.0.1:8000)...';
       if (sbModel) sbModel.textContent = 'Inferencing (3D U-Net)';
 
-      await new Promise(r => setTimeout(r, 600));
-
-      let serverSuccess = false;
-      let volumetrics = null;
-      let segMask = null;
-
-      // 1. Try FastAPI backend first
       try {
-        const statusRes = await fetch('http://127.0.0.1:8000/api/status', { method: 'GET' }).catch(() => null);
-        if (statusRes && statusRes.ok) {
-          if (aiFootnote) aiFootnote.textContent = 'Backend online (RTX 3050): Running patch-based sliding window...';
-          const inferRes = await fetch('http://127.0.0.1:8000/api/segment_synthetic', { method: 'POST' });
-          if (inferRes.ok) {
-            const data = await inferRes.json();
-            volumetrics = data.volumetrics;
-            if (data.download_url) {
-              const maskRes = await fetch(`http://127.0.0.1:8000${data.download_url}`);
-              if (maskRes.ok) {
-                const blob = await maskRes.blob();
-                const file = new File([blob], 'seg.nii.gz');
-                const raw = await window.NiftiParser.readNiftiRaw(file);
-                segMask = new Uint8Array(raw.voxels.length);
-                for (let i = 0; i < raw.voxels.length; i++) {
-                  segMask[i] = Math.round(raw.voxels[i]);
-                }
-                serverSuccess = true;
-              }
-            }
-          }
+        const formData = new FormData();
+        const raw = state.rawFiles || {};
+        if (!raw.t1 || !raw.t1ce || !raw.t2 || !raw.flair) {
+          throw new Error('Original patient scan files are missing from memory. Please reload the patient folder.');
         }
-      } catch (err) {
-        console.warn("Backend inference unreachable, using standalone engine:", err);
-      }
 
-      // 2. Fallback to high-precision standalone BraTS segmentation
-      if (!serverSuccess || !segMask) {
-        const { nx, ny, nz, dx, dy, dz } = window.AppState.state.dataset;
-        const maskNx = nx > 0 ? nx : 240;
-        const maskNy = ny > 0 ? ny : 240;
-        const maskNz = nz > 0 ? nz : 155;
-        segMask = generateRealSegmentationMask(maskNx, maskNy, maskNz);
-        volumetrics = computeClientVolumetrics(segMask, maskNx, maskNy, maskNz, dx || 1.0, dy || 1.0, dz || 1.0);
-      }
+        formData.append('t1', raw.t1);
+        formData.append('t1ce', raw.t1ce);
+        formData.append('t2', raw.t2);
+        formData.append('flair', raw.flair);
 
-      window.AppState.setSegmentationMask(segMask, {
-        1: 'Necrotic Core (NCR)',
-        2: 'Peritumoral Edema (ED)',
-        4: 'Enhancing Tumor (ET)'
-      }, volumetrics);
-
-      // Trigger 3D tumor reconstruction
-      if (window.ThreeViewer) {
-        await window.ThreeViewer.reconstructTumorSurface((stage) => {
-          if (aiFootnote) aiFootnote.textContent = stage;
+        const inferRes = await fetch('http://127.0.0.1:8000/api/segment', {
+          method: 'POST',
+          body: formData
+        }).catch(err => {
+          throw new Error('FastAPI backend is offline or unreachable at http://127.0.0.1:8000. Start backend/server.py to run the trained model.');
         });
+
+        if (!inferRes.ok) {
+          const errData = await inferRes.json().catch(() => ({}));
+          throw new Error(errData.detail || `Backend server returned HTTP ${inferRes.status}`);
+        }
+
+        const data = await inferRes.json();
+        const volumetrics = data.volumetrics;
+        if (!data.download_url) {
+          throw new Error('Backend did not provide a segmentation download URL.');
+        }
+
+        const maskRes = await fetch(`http://127.0.0.1:8000${data.download_url}`);
+        if (!maskRes.ok) throw new Error('Failed to download generated segmentation mask from backend.');
+
+        const blob = await maskRes.blob();
+        const file = new File([blob], 'ai_seg.nii.gz');
+        const rawMask = await window.NiftiParser.readNiftiRaw(file);
+        const segMask = new Uint8Array(rawMask.voxels.length);
+        for (let i = 0; i < rawMask.voxels.length; i++) {
+          segMask[i] = Math.round(rawMask.voxels[i]);
+        }
+
+        window.AppState.setSegmentationMask(segMask, {
+          1: 'Necrotic Core (NCR)',
+          2: 'Peritumoral Edema (ED)',
+          4: 'Enhancing Tumor (ET)'
+        }, volumetrics, 'ai');
+
+        if (window.ThreeViewer) {
+          await window.ThreeViewer.reconstructTumorSurface((stage) => {
+            if (aiFootnote) aiFootnote.textContent = stage;
+          });
+        }
+
+        updateAnalysisSuite(volumetrics);
+
+        btnRunAI.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2">
+            <polyline points="20 6 9 17 4 12"/>
+          </svg>
+          <span>AI Inference Complete ✓</span>
+        `;
+        if (toggleTumor) toggleTumor.checked = true;
+        if (toggle3DTumor) toggle3DTumor.checked = true;
+        if (aiFootnote) aiFootnote.textContent = `Trained Model Output: ${volumetrics.total_tumor_cm3} cm³ (ET: ${volumetrics.enhancing_tumor_cm3}cm³ | ED: ${volumetrics.edema_cm3}cm³ | NCR: ${volumetrics.necrotic_core_cm3}cm³)`;
+        if (sbModel) sbModel.textContent = 'Active (PyTorch 3D U-Net)';
+
+        renderAllViews();
+      } catch (err) {
+        console.error('AI Segmentation Failure:', err);
+        window.AppState.setState(window.AppState.STATES.ERROR, {
+          errorMessage: `Model Inference Error: ${err.message}`
+        });
+        btnRunAI.innerHTML = `
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="6 3 20 12 6 21 6 3"/>
+          </svg>
+          <span>Run AI Segmentation</span>
+        `;
+        if (aiFootnote) aiFootnote.textContent = 'Inference failed: Start backend server.';
+        if (sbModel) sbModel.textContent = 'Error (Backend Offline)';
+      } finally {
+        isAiSegmenting = false;
+        btnRunAI.disabled = !(['flair', 't1ce', 't1', 't2'].every(m => window.AppState.state.loadedModalities.includes(m)));
       }
-
-      // Update Analysis Suite Metrics Tab
-      updateAnalysisSuite(volumetrics);
-
-      isAiSegmenting = false;
-      btnRunAI.innerHTML = `
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10B981" stroke-width="2">
-          <polyline points="20 6 9 17 4 12"/>
-        </svg>
-        <span>Segmentation Complete ✓</span>
-      `;
-
-      if (toggleTumor) toggleTumor.checked = true;
-      if (toggle3DTumor) toggle3DTumor.checked = true;
-      if (aiFootnote) aiFootnote.textContent = `Lesion Volume: ${volumetrics.total_tumor_cm3} cm³ (ET: ${volumetrics.enhancing_tumor_cm3}cm³ | ED: ${volumetrics.edema_cm3}cm³ | NCR: ${volumetrics.necrotic_core_cm3}cm³)`;
-      if (sbModel) sbModel.textContent = serverSuccess ? 'Ready (PyTorch RTX 3050)' : 'Ready (BraTS 3D U-Net)';
-
-      renderAllViews();
     });
   }
 
@@ -962,13 +953,73 @@ document.addEventListener('DOMContentLoaded', () => {
         badgeStatus.className = 'dataset-status-pill loaded';
       }
       if (infoStatus) infoStatus.textContent = 'Loaded';
+
+      // Patient ID & Badges
+      const pId = state.patientId || dataset.patientId;
+      if (infoPatientId) infoPatientId.textContent = pId || 'Single Scan';
+      if (badgePatientId) {
+        if (pId) {
+          badgePatientId.style.display = 'inline-block';
+          badgePatientId.textContent = `Patient: ${pId}`;
+        } else {
+          badgePatientId.style.display = 'none';
+        }
+      }
+
+      // Modalities and Modality Pills
+      const all4Loaded = ['flair', 't1ce', 't1', 't2'].every(m => state.loadedModalities.includes(m));
+      if (infoModalities) {
+        infoModalities.textContent = state.loadedModalities.length > 0 
+          ? state.loadedModalities.map(m => m.toUpperCase()).join(', ') 
+          : 'Single Modality';
+      }
+
+      modButtons.forEach(btn => {
+        const mod = btn.getAttribute('data-modality');
+        const isLoaded = state.loadedModalities.includes(mod);
+        btn.disabled = !isLoaded;
+        if (isLoaded) {
+          btn.title = `${mod.toUpperCase()}: Click to view this modality`;
+          btn.classList.toggle('active', mod === state.currentModality);
+        } else {
+          btn.title = `${mod.toUpperCase()}: Not loaded for this patient`;
+          btn.classList.remove('active');
+        }
+      });
+
+      // Enable/Disable Segmentation Button
+      if (btnRunAI) {
+        if (all4Loaded) {
+          btnRunAI.disabled = false;
+          btnRunAI.title = 'Run 3D Residual U-Net segmentation on loaded patient';
+        } else {
+          btnRunAI.disabled = true;
+          btnRunAI.title = 'BraTS AI Segmentation requires all 4 modalities (T1, T1ce, T2, FLAIR)';
+        }
+      }
+
+      // Ground Truth Mask status
+      if (infoMaskStatus) {
+        if (state.segmentationMask) {
+          infoMaskStatus.textContent = state.segmentationSource === 'ground_truth' 
+            ? 'Ground Truth Mask Loaded (_seg)' 
+            : 'AI Predicted Mask';
+          infoMaskStatus.style.color = '#00F0FF';
+        } else {
+          infoMaskStatus.textContent = 'None';
+          infoMaskStatus.style.color = '#94A3B8';
+        }
+      }
+
       if (infoDimensions) infoDimensions.textContent = `${dataset.nx} × ${dataset.ny} × ${dataset.nz}`;
       if (infoSpacing) infoSpacing.textContent = `${dataset.dx.toFixed(1)} × ${dataset.dy.toFixed(1)} × ${dataset.dz.toFixed(1)} mm`;
       if (infoSlices) infoSlices.textContent = `${dataset.nz}`;
       if (infoFormat) infoFormat.textContent = dataset.fileType || 'Compressed NIfTI (.nii.gz)';
       if (infoFilename) infoFilename.textContent = dataset.fileName || 'mni152.nii.gz';
 
-      if (sbDataset) sbDataset.textContent = dataset.fileName || 'mni152.nii.gz';
+      if (sbDataset) {
+        sbDataset.textContent = pId ? `${pId} (${state.loadedModalities.length} mods)` : (dataset.fileName || 'mni152.nii.gz');
+      }
       if (sbEngine) sbEngine.textContent = 'Active (Three.js WebGL)';
 
       // Sync Max Slices
@@ -998,10 +1049,22 @@ document.addEventListener('DOMContentLoaded', () => {
         window.ThreeViewer.reconstructBrainSurface();
       }
 
+      // If a segmentation mask was loaded, render 3D tumor reconstruction
+      if (state.segmentationMask && window.ThreeViewer) {
+        window.ThreeViewer.reconstructTumorSurface();
+        if (state.segmentationMetrics) {
+          updateAnalysisSuite(state.segmentationMetrics);
+        }
+      }
+
     } else if (currentState === window.AppState.STATES.ERROR) {
       if (errorBanner && errorMessageDisplay) {
         errorBanner.classList.remove('hidden');
         errorMessageDisplay.textContent = errorMessage || 'Failed to parse file.';
+      }
+      if (btnRunAI) {
+        btnRunAI.disabled = true;
+        btnRunAI.title = errorMessage || 'Segmentation disabled due to dataset error';
       }
     }
   });

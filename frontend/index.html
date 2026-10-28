@@ -340,6 +340,7 @@
               <!-- BOTTOM UPLOAD BAR (EXACTLY MATCHING IMAGE 1) -->
               <div class="bottom-upload-card" id="upload-panel">
                 <input type="file" id="file-input" accept=".dcm,.nii,.nii.gz" multiple hidden>
+                <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
                 
                 <div class="upload-left-content">
                   <div class="cloud-upload-icon">
@@ -351,8 +352,9 @@
                   </div>
                   <div class="upload-text-group">
                     <h3 class="upload-heading">Upload Brain MRI</h3>
-                    <p class="upload-subheading">Drag and drop your DICOM or NIfTI dataset here</p>
+                    <p class="upload-subheading">Select a patient folder or drag & drop all patient scans here</p>
                   </div>
+                  <button class="btn-browse-cyber" id="btn-load-patient" title="Load Patient Folder containing all 4 BraTS modalities (T1, T1ce, T2, FLAIR)">Load Patient</button>
                   <button class="btn-browse-cyber" id="btn-browse-files">Browse Files</button>
                   <button class="btn-sample-load" id="btn-load-sample" title="Load High-Res Anatomical MRI Sample">Load MNI152</button>
                   <button class="btn-sample-load active" id="btn-load-brats-sample" title="Load Multi-Modal BraTS 2020 Dataset (T1, T1ce, T2, FLAIR + Segmentation)">Load BraTS 2020 Case</button>
@@ -382,12 +384,15 @@
                 <div class="control-card-body">
                   <!-- BRATS 2020 MODALITY SELECTOR -->
                   <div class="control-sub-section mb-2" id="modality-selector-section">
-                    <span class="section-micro-label">BraTS MRI Modality</span>
-                    <div class="modality-pills-row">
-                      <button class="modality-pill-btn active" data-modality="flair" id="btn-mod-flair" title="FLAIR: Fluid Attenuated Inversion Recovery (highlights peritumoral edema)">FLAIR</button>
-                      <button class="modality-pill-btn" data-modality="t1ce" id="btn-mod-t1ce" title="T1ce: T1 with Gadolinium Contrast (highlights enhancing tumor core)">T1ce</button>
-                      <button class="modality-pill-btn" data-modality="t1" id="btn-mod-t1" title="T1: T1-weighted Spin Echo (anatomical reference)">T1</button>
-                      <button class="modality-pill-btn" data-modality="t2" id="btn-mod-t2" title="T2: T2-weighted Fast Spin Echo (edema & fluid)">T2</button>
+                    <div class="flex-between mb-1">
+                      <span class="section-micro-label">BraTS MRI Modality</span>
+                      <span class="pill-tag-cyan" id="badge-patient-id" style="display:none; font-size: 10px; padding: 2px 6px;">Patient: None</span>
+                    </div>
+                    <div class="modality-pills-row" id="modality-pills-row">
+                      <button class="modality-pill-btn" data-modality="flair" id="btn-mod-flair" disabled title="FLAIR: Fluid Attenuated Inversion Recovery (highlights peritumoral edema)">FLAIR</button>
+                      <button class="modality-pill-btn" data-modality="t1ce" id="btn-mod-t1ce" disabled title="T1ce: T1 with Gadolinium Contrast (highlights enhancing tumor core)">T1ce</button>
+                      <button class="modality-pill-btn" data-modality="t1" id="btn-mod-t1" disabled title="T1: T1-weighted Spin Echo (anatomical reference)">T1</button>
+                      <button class="modality-pill-btn" data-modality="t2" id="btn-mod-t2" disabled title="T2: T2-weighted Fast Spin Echo (edema & fluid)">T2</button>
                     </div>
                   </div>
 
@@ -563,6 +568,14 @@
                       <span class="kv-val" id="info-status">Awaiting MRI</span>
                     </div>
                     <div class="info-kv-row">
+                      <span class="kv-key">Patient ID</span>
+                      <span class="kv-val" id="info-patient-id">&mdash;</span>
+                    </div>
+                    <div class="info-kv-row">
+                      <span class="kv-key">Modalities</span>
+                      <span class="kv-val" id="info-modalities">&mdash;</span>
+                    </div>
+                    <div class="info-kv-row">
                       <span class="kv-key">Dimensions</span>
                       <span class="kv-val" id="info-dimensions">&mdash;</span>
                     </div>
@@ -573,6 +586,10 @@
                     <div class="info-kv-row">
                       <span class="kv-key">Slice Count</span>
                       <span class="kv-val" id="info-slices">&mdash;</span>
+                    </div>
+                    <div class="info-kv-row">
+                      <span class="kv-key">Ground Truth Mask</span>
+                      <span class="kv-val" id="info-mask-status">&mdash;</span>
                     </div>
                     <div class="info-kv-row">
                       <span class="kv-key">File Format</span>
@@ -586,13 +603,13 @@
 
                   <!-- AI SEGMENTATION ACTION -->
                   <div class="ai-segmentation-box mt-3">
-                    <button class="btn-run-segmentation" id="btn-run-ai">
+                    <button class="btn-run-segmentation" id="btn-run-ai" disabled title="Load all 4 patient modalities (T1, T1ce, T2, FLAIR) to enable segmentation">
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
                         <polygon points="6 3 20 12 6 21 6 3"/>
                       </svg>
                       <span>Run AI Segmentation</span>
                     </button>
-                    <span class="ai-model-footnote" id="ai-footnote">Raidionics 3D Deep U-Net</span>
+                    <span class="ai-model-footnote" id="ai-footnote">3D Residual U-Net (PyTorch)</span>
                   </div>
                 </div>
               </div>
@@ -952,6 +969,7 @@
   <script src="js/three-viewer.js"></script>
   <script src="js/state.js"></script>
   <script src="js/nifti.js"></script>
+  <script src="js/patient-loader.js"></script>
   <script src="js/dicom.js"></script>
   <script src="js/viewer.js"></script>
   <script src="js/upload.js"></script>

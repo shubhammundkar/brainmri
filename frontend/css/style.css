@@ -1614,10 +1614,21 @@ input, select {
   border-color: #00F0FF;
 }
 
-.btn-sample-load.active {
-  background: rgba(0, 240, 255, 0.15);
-  color: #00F0FF;
-  border-color: rgba(0, 240, 255, 0.4);
+.modality-pill-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  pointer-events: none;
+  background: transparent;
+  color: #64748B;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+.btn-run-segmentation:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  filter: grayscale(0.8);
+  pointer-events: none;
 }
 
 
